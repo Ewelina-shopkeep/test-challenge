@@ -1,0 +1,92 @@
+version: 2.1
+
+commands:
+  install_allure:
+    description: Installs allure framework for generating tests reports
+    steps:
+      - run: echo "export PATH='$PATH:/opt/allure/bin'" | tee -a "${BASH_ENV}"
+      - run:
+          command: |
+            pip install allure
+  pytest:
+    description: Runs pytest
+    parameters:
+      test_results_path:
+        type: string
+    steps:
+      - run: |
+          mkdir -p "<<parameters.test_results_path>>"
+      - run:
+          command: python -m pytest --alluredir=<<parameters.alluredir>>
+          name: run generated pytest command
+      - run:
+          command: zip allure.zip <<parameters.alluredir>>/*
+          name: zip allure files
+          when: always
+      - store_artifacts:
+          path: allure.zip
+      - store_test_results:
+          path: .cci_junit/<<parameters.test_results_path>>
+  setup_sources:
+    description: Clones the repo and sets up python.
+    parameters:
+      work_dir:
+        default: ~/project
+        type: string
+    steps:
+      - checkout
+      - setup_pip:
+          work_dir: <<parameters.work_dir>>
+      - run:
+          command: |-
+            py -m pip install --user virtualenv
+          working_directory: <<parameters.work_dir>>
+      - run:
+          command: |
+            py -m venv env
+          working_directory: <<parameters.work_dir>>
+      - run:
+          command: |
+            .\env\Scripts\activate
+          working_directory: <<parameters.work_dir>>
+jobs:
+  run_tests:
+    executor: docker-helm/cci-swiss-knife
+    steps:
+      - setup_sources
+      - attach_workspace:
+          at: ./
+      - pytest:
+          tests_path: testcases
+      - store_artifacts:
+          path: .artifacts
+  create_allure_report:
+      executor: docker-helm/cci-swiss-knife
+      parameters:
+          allure_report_path:
+              default: allure-report
+              type: string
+      steps:
+          - setup_sources
+          - install_allure
+          - attach_workspace:
+              at: ./
+          - get-all-allure-files
+          - run: allure generate .allure -o << parameters.allure_report_path >>
+          - store_artifacts:
+              path: << parameters.allure_report_path >>
+          - store_artifacts:
+              path: something_failed
+
+workflow:
+  jobs:
+    - create_env:
+        context: global
+    - run_tests:
+        context: global
+        requires:
+          - create_env
+    - create_allure_report:
+        context: global
+        requires:
+          - run_tests
