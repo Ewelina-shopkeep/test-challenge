@@ -79,14 +79,15 @@ jobs:
               path: something_failed
 
 workflow:
-  jobs:
-    - create_env:
-        context: global
-    - run_tests:
-        context: global
-        requires:
-          - create_env
-    - create_allure_report:
-        context: global
-        requires:
-          - run_tests
+  trigger_tests:
+    jobs:
+      - create_env:
+          context: global
+      - run_tests:
+          context: global
+          requires:
+            - create_env
+      - create_allure_report:
+          context: global
+          requires:
+            - run_tests
